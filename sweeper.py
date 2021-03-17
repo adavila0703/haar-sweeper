@@ -21,10 +21,9 @@ def sweep_sweep(keyword, pics, headless) -> None:
 
     driver.get(site_url)
 
-    pic_urls = []
+    pic_urls = set()
     
     images = driver.find_elements_by_tag_name('img')
-
     for image in images:
         if image.get_attribute('alt') == f'Image result for {keyword}':
             image.click()
@@ -37,7 +36,7 @@ def sweep_sweep(keyword, pics, headless) -> None:
             images = driver.find_elements_by_tag_name('img')
             for image in images:
                 if image.get_attribute('alt') == 'See the source image' and image.get_attribute('tabindex') == '0':
-                    pic_urls.append(image.get_attribute('src'))
+                    pic_urls.add(image.get_attribute('src'))
             icons = driver.find_elements_by_class_name('icon')
             for icon in icons:
                 if icon.get_attribute('title') == 'Next image result':
@@ -62,4 +61,4 @@ def sweep_sweep(keyword, pics, headless) -> None:
     return None
 
 if __name__ == '__main__':
-    sweep_sweep('', 50, False)
+    sweep_sweep('', 100, False)
