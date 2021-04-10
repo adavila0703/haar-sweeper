@@ -1,32 +1,27 @@
 import time
 import requests
-from requests.api import request
-from requests.exceptions import MissingSchema, InvalidSchema, SSLError
 from selenium import webdriver
-from selenium.common.exceptions import InvalidArgumentException, StaleElementReferenceException
+from selenium.webdriver import ChromeOptions
 import cv2
+import os
+import numpy as np
 
-
-
-def sweep_sweep(keyword, pics, headless) -> None:
-    search = keyword.replace(' ', '%20')
-    site_url = f'https://www.bing.com/images/search?q={search}&qft=+filterui:aspect-square&form=IRFLTR&first=1&tsc=ImageBasicHover'
-    
-    #cascades
-    faceCascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    
-    
-    if headless == True:
-        chrome_options = Options()
+def set_options(*args, **kwargs) -> webdriver.Chrome:
+    if kwargs['headless']:
+        chrome_options = ChromeOptions()
         chrome_options.add_argument("--headless")
         driver = webdriver.Chrome('chromedriver.exe', options=chrome_options)
     else:
         driver = webdriver.Chrome('chromedriver.exe')
+    return driver
 
+def sweep_sweep(keyword, pics, headless, size) -> None:
+    search = keyword.replace(' ', '%20')
+    site_url = f'https://www.bing.com/images/search?q={search}&qft=+filterui:aspect-square&form=IRFLTR&first=1&tsc=ImageBasicHover'
+    driver = set_options(headless=headless)
+    faceCascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     driver.get(site_url)
 
-    pic_urls = set()
-    
     images = driver.find_elements_by_tag_name('img')
     for image in images:
         if image.get_attribute('alt') == f'Image result for {keyword}':
@@ -35,68 +30,44 @@ def sweep_sweep(keyword, pics, headless) -> None:
 
     driver.switch_to.frame('OverlayIFrame')
 
-    pic_num = 0
     for pic in range(0, pics + 1):
         try:
-            images = driver.find_elements_by_tag_name('img')
-            for image in images:
-                if image.get_attribute('alt') == 'See the source image' and image.get_attribute('tabindex') == '0':
-                    # gray = cv2.cvtColor(face_check, cv2.COLOR_BGR2RGB)
-                    # faces = faceCascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(30, 30), flags = cv2.CASCADE_SCALE_IMAGE)
-                    # if faces != []:
-                    #     pic_urls.add(image.get_attribute('src'))
-                    url = image.get_attribute('src')
-                    
-                   
-                    if url.endswith('png') == False and url.endswith('jpg') == False and url.endswith('ImgRaw') == False and url.endswith('jpeg') == False:
-                        print('continue', url)
-                        continue
+            image_path = driver.find_element_by_xpath('//*[@id="mainImageWindow"]/div[2]/div/div/div/img')
+            url = image_path.get_attribute('src')
+            request = requests.get(url, stream=True).raw
 
-                    try:
-                        request = requests.get(url)
-                    except SSLError:
-                        continue                  
+            if request.headers['Content-Type'] != 'image/png' and request.headers['Content-Type'] != 'image/jpeg':
+                print('continue', url)
+                raise(Exception, 'Not Img')  
 
-                    file = open('pics/' + str(pic_num) + '.png', 'wb')
-                    file.write(request.content)
-                    file.close()
-                    face_pic = cv2.imread(f'pics/{str(pic_num)}.png')
-                    gray = cv2.cvtColor(face_pic, cv2.COLOR_BGR2RGB)
-                    faces = faceCascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(30, 30), flags = cv2.CASCADE_SCALE_IMAGE)
-                    
-                    
-                    time.sleep(1)
-                    pic_num += 1
-                    if len(faces) == 0 and pic_num != 0:
-                        print('no faces', url)
-                        pic_num -= 1
-                        
+            image = np.array(bytearray(request.read()), dtype='uint8')
+            image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+            resize = cv2.resize(image, size)
+            faces = faceCascade.detectMultiScale(resize, scaleFactor=1.2, minNeighbors=5, minSize=(30, 30), flags = cv2.CASCADE_SCALE_IMAGE)
+            
+            time.sleep(0.5)
+            if len(faces) == 0 and pic != 0:
+                raise(Exception, 'No face') 
 
-                   
+            cv2.imwrite(f'pics/{str(pic)}.png', resize)          
+            icons = driver.find_element_by_xpath('//*[@id="navr"]/span')
+            icons.click()
 
+        except Exception as e:
+            print('error', e)
+            time.sleep(1)
+            icons = driver.find_element_by_xpath('//*[@id="navr"]/span')
+            icons.click()
 
-            icons = driver.find_elements_by_class_name('icon')
-            for icon in icons:
-                if icon.get_attribute('title') == 'Next image result':
-                    icon.click()
-        except StaleElementReferenceException:
-            pass
-        
-    # for t in enumerate(pic_urls):
-    #     try:
-    #         request = requests.get(t[1])
-    #         file = open('pics/' + str(t[0]) + '.png', 'wb')
-    #         file.write(request.content)
-    #         file.close()
-    #     except InvalidArgumentException:
-    #         pass
-    #     except MissingSchema:
-    #         pass
-    #     except IndexError:
-    #         pass
-    #     except InvalidSchema:
-    #         pass
-    # return None
+def rescale():
+    files = os.listdir('pics')
+
+    for file in files:
+        img_path = str(file)
+        img = cv2.imread('pics/' + file, cv2.IMREAD_GRAYSCALE)
+        resize = cv2.resize(img, (100, 100))
+        cv2.imwrite(img_path, resize)
+
 
 if __name__ == '__main__':
-    sweep_sweep('faces', 100, False)
+    sweep_sweep('faces', 50, False, (100, 100))
